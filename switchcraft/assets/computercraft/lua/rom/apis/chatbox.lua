@@ -1,7 +1,7 @@
 -- SwitchCraft chatbox legacy handler by Yemmel
 -- Contact Yemmel#2747 regarding any issues
 
-SERVER_URL = "ws://localhost:8124"
+SERVER_URL = "ws://chat.switchcraft.pw"
 
 closeReasons = {
   ["SERVER_STOPPING"] = 4000,
