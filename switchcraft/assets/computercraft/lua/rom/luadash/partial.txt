@@ -1,0 +1,10 @@
+* _.partial(f, ...)
+
+  Return a function corresponding to the partial
+  application of 'f' to the given arguments.
+  For instance:
+
+  Example:
+
+    > print(_.partial(_.ops.plus, 1)(2))
+    3

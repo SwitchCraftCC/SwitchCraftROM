@@ -1,0 +1,9 @@
+* _.apply(function, arguments)
+
+  Apply 'function' to the array 'arguments'.
+
+  Example:
+
+    > print(_.apply(_.ops.add, {1, 2}))
+    3
+

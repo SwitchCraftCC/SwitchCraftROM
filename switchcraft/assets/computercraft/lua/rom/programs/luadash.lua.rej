@@ -1,0 +1,8 @@
+--- luadash.lua	2018-07-15 23:32:59.001721313 +0200
++++ luadash.2.lua	2018-07-15 23:54:31.607291882 +0200
+@@ -1,4 +1,4 @@
+-local doc_path = '/doc/'
++local doc_path = '/rom/luadash/'
+ local topic = ((...) or 'index') .. '.txt'
+ 
+ -- terrible heuristic haha it'll catch typos

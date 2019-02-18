@@ -1,0 +1,8 @@
+* _.keys(t)
+
+  Return a list of the keys in 't'.
+
+  Example:
+
+    > _.keys { a = 1, b = 2 }
+    { 'a', 'b' }

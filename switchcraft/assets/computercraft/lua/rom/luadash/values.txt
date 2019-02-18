@@ -1,0 +1,9 @@
+* _.values(t)
+
+  Return a list of the values in 't'.
+
+  Example:
+
+    > _.values { a = 1, b = 2 }
+    { 1, 2 }
+
