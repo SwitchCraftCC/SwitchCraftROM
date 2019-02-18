@@ -237,6 +237,16 @@ function getPlayers()
   return players or {}
 end
 
+-- legacy compat
+function getPlayerList()
+  if not players then return {} end
+  local out = {}
+  for i, player in pairs(players) do
+    out[i] = player.name or player.uuid
+  end
+  return out
+end
+
 function hasCapability(capability)
   if not capabilities then return false end
   for _, cap in pairs(capabilities) do
