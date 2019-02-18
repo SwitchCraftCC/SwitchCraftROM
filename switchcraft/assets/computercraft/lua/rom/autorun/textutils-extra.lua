@@ -350,5 +350,3 @@ function textutils.prompt( _tOptions )
     
     return sLine
 end
-
-return prompt
