@@ -70,7 +70,7 @@ local function handleMessageMessage(data)
 
   local source
   if data.channel == "discord" then
-    source = {data.member.name and (data.member.name .. data.member.discriminator) or data.member.id}
+    source = {data.discordUser.name and (data.discordUser.name .. data.discordUser.discriminator) or data.discordUser.id}
   elseif data.channel == "chatbox" then
     source = {data.rawName, data.user.name or data.user.uuid}
   else
