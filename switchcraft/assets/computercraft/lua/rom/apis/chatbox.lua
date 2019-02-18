@@ -205,7 +205,10 @@ function run()
     if event == "websocket_success" and eventData[2] == wsURL then
       ws = eventData[3]
     elseif event == "websocket_message" and eventData[2] == wsURL then
-      handleMessage(eventData)
+      local ok, err = pcall(handleMessage, eventData)
+      if not ok then
+        log("Chatbox error: " .. err)
+      end
     elseif event == "websocket_closed" and eventData[2] == wsURL then
       if handleClose(eventData) then
         running = false
