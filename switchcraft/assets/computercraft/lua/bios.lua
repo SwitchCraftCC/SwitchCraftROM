@@ -1,67 +1,44 @@
-local native_select, native_type = select, type
-
---- Expect an argument to have a specific type.
+-- Load in expect from the module path.
 --
--- @tparam int index The 1-based argument index.
--- @param value The argument's value.
--- @tparam string ... The allowed types of the argument.
--- @throws If the value is not one of the allowed types.
-local function expect(index, value, ...)
-    local t = native_type(value)
-    for i = 1, native_select("#", ...) do
-        if t == native_select(i, ...) then return true end
-    end
+-- Ideally we'd use require, but that is part of the shell, and so is not
+-- available to the BIOS or any APIs. All APIs load this using dofile, but that
+-- has not been defined at this point.
+local expect
 
-    local types = table.pack(...)
-    for i = types.n, 1, -1 do
-        if types[i] == "nil" then table.remove(types, i) end
-    end
+do
+    local h = fs.open("rom/modules/main/cc/expect.lua", "r")
+    local f, err = loadstring(h.readAll(), "@expect.lua")
+    h.close()
 
-    local type_names
-    if #types <= 1 then
-        type_names = tostring(...)
-    else
-        type_names = table.concat(types, ", ", 1, #types - 1) .. " or " .. types[#types]
-    end
-
-    -- If we can determine the function name with a high level of confidence, try to include it.
-    local name
-    if native_type(debug) == "table" and native_type(debug.getinfo) == "function" then
-        local ok, info = pcall(debug.getinfo, 3, "nS")
-        if ok and info.name and #info.name ~= "" and info.what ~= "C" then name = info.name end
-    end
-
-    if name then
-        error( ("bad argument #%d to '%s' (expected %s, got %s)"):format(index, name, type_names, t), 3 )
-    else
-        error( ("bad argument #%d (expected %s, got %s)"):format(index, type_names, t), 3 )
-    end
+    if not f then error(err) end
+    expect = f().expect
 end
 
--- We expose expect in the global table as APIs need to access it, but give it
--- a non-identifier name - meaning it does not show up in auto-completion.
--- expect is an internal function, and should not be used by users.
-_G["~expect"] = expect
-
-local nativegetfenv = getfenv
 if _VERSION == "Lua 5.1" then
     -- If we're on Lua 5.1, install parts of the Lua 5.2/5.3 API so that programs can be written against it
+    local type = type
     local nativeload = load
     local nativeloadstring = loadstring
     local nativesetfenv = setfenv
+
+    --- Historically load/loadstring would handle the chunk name as if it has
+    -- been prefixed with "=". We emulate that behaviour here.
+    local function prefix(chunkname)
+        if type(chunkname) ~= "string" then return chunkname end
+        local head = chunkname:sub(1, 1)
+        if head == "=" or head == "@" then
+            return chunkname
+        else
+            return "=" .. chunkname
+        end
+    end
+
     function load( x, name, mode, env )
-        if type( x ) ~= "string" and type( x ) ~= "function" then
-            error( "bad argument #1 (expected string or function, got " .. type( x ) .. ")", 2 )
-        end
-        if name ~= nil and type( name ) ~= "string" then
-            error( "bad argument #2 (expected string, got " .. type( name ) .. ")", 2 )
-        end
-        if mode ~= nil and type( mode ) ~= "string" then
-            error( "bad argument #3 (expected string, got " .. type( mode ) .. ")", 2 )
-        end
-        if env ~= nil and type( env) ~= "table" then
-            error( "bad argument #4 (expected table, got " .. type( env ) .. ")", 2 )
-        end
+        expect(1, x, "function", "string")
+        expect(2, name, "string", "nil")
+        expect(3, mode, "string", "nil")
+        expect(4, env, "table", "nil")
+
         local ok, p1, p2 = pcall( function()
             if type(x) == "string" then
                 local result, err = nativeloadstring( x, name )
@@ -106,6 +83,8 @@ if _VERSION == "Lua 5.1" then
         math.log10 = nil
         table.maxn = nil
     else
+        loadstring = function(string, chunkname) return nativeloadstring(string, prefix( chunkname )) end
+
         -- Inject a stub for the old bit library
         _G.bit = {
             bnot = bit32.bnot,
@@ -114,7 +93,7 @@ if _VERSION == "Lua 5.1" then
             bxor = bit32.bxor,
             brshift = bit32.arshift,
             blshift = bit32.lshift,
-            blogic_rshift = bit32.rshift
+            blogic_rshift = bit32.rshift,
         }
     end
 end
@@ -202,22 +181,18 @@ end
 
 -- Install globals
 function sleep( nTime )
-    if nTime ~= nil and type( nTime ) ~= "number" then
-        error( "bad argument #1 (expected number, got " .. type( nTime ) .. ")", 2 )
-    end
+    expect(1, nTime, "number", "nil")
     local timer = os.startTimer( nTime or 0 )
     repeat
-        local sEvent, param = os.pullEvent( "timer" )
+        local _, param = os.pullEvent( "timer" )
     until param == timer
 end
 
 function write( sText )
-    if type( sText ) ~= "string" and type( sText ) ~= "number" then
-        error( "bad argument #1 (expected string or number, got " .. type( sText ) .. ")", 2 )
-    end
+    expect(1, sText, "string", "number")
 
-    local w,h = term.getSize()
-    local x,y = term.getCursorPos()
+    local w, h = term.getSize()
+    local x, y = term.getCursorPos()
 
     local nLinesPrinted = 0
     local function newLine()
@@ -232,13 +207,14 @@ function write( sText )
     end
 
     -- Print the line with proper word wrapping
-    while string.len(sText) > 0 do
+    sText = tostring(sText)
+    while #sText > 0 do
         local whitespace = string.match( sText, "^[ \t]+" )
         if whitespace then
             -- Print whitespace
             term.write( whitespace )
-            x,y = term.getCursorPos()
-            sText = string.sub( sText, string.len(whitespace) + 1 )
+            x, y = term.getCursorPos()
+            sText = string.sub( sText, #whitespace + 1 )
         end
 
         local newline = string.match( sText, "^\n" )
@@ -250,24 +226,24 @@ function write( sText )
 
         local text = string.match( sText, "^[^ \t\n]+" )
         if text then
-            sText = string.sub( sText, string.len(text) + 1 )
-            if string.len(text) > w then
+            sText = string.sub( sText, #text + 1 )
+            if #text > w then
                 -- Print a multiline word
-                while string.len( text ) > 0 do
+                while #text > 0 do
                     if x > w then
                         newLine()
                     end
                     term.write( text )
-                    text = string.sub( text, (w-x) + 2 )
-                    x,y = term.getCursorPos()
+                    text = string.sub( text, w - x + 2 )
+                    x, y = term.getCursorPos()
                 end
             else
                 -- Print a word normally
-                if x + string.len(text) - 1 > w then
+                if x + #text - 1 > w then
                     newLine()
                 end
                 term.write( text )
-                x,y = term.getCursorPos()
+                x, y = term.getCursorPos()
             end
         end
     end
@@ -302,18 +278,11 @@ function printError( ... )
 end
 
 function read( _sReplaceChar, _tHistory, _fnComplete, _sDefault )
-    if _sReplaceChar ~= nil and type( _sReplaceChar ) ~= "string" then
-        error( "bad argument #1 (expected string, got " .. type( _sReplaceChar ) .. ")", 2 )
-    end
-    if _tHistory ~= nil and type( _tHistory ) ~= "table" then
-        error( "bad argument #2 (expected table, got " .. type( _tHistory ) .. ")", 2 )
-    end
-    if _fnComplete ~= nil and type( _fnComplete ) ~= "function" then
-        error( "bad argument #3 (expected function, got " .. type( _fnComplete ) .. ")", 2 )
-    end
-    if _sDefault ~= nil and type( _sDefault ) ~= "string" then
-        error( "bad argument #4 (expected string, got " .. type( _sDefault ) .. ")", 2 )
-    end
+    expect(1, _sReplaceChar, "string", "nil")
+    expect(2, _tHistory, "table", "nil")
+    expect(3, _fnComplete, "function", "nil")
+    expect(4, _sDefault, "string", "nil")
+
     term.setCursorBlink( true )
 
     local sLine
@@ -323,7 +292,7 @@ function read( _sReplaceChar, _tHistory, _fnComplete, _sDefault )
         sLine = ""
     end
     local nHistoryPos
-    local nPos = #sLine
+    local nPos, nScroll = #sLine, 0
     if _sReplaceChar then
         _sReplaceChar = string.sub( _sReplaceChar, 1, 1 )
     end
@@ -331,7 +300,7 @@ function read( _sReplaceChar, _tHistory, _fnComplete, _sDefault )
     local tCompletions
     local nCompletion
     local function recomplete()
-        if _fnComplete and nPos == string.len(sLine) then
+        if _fnComplete and nPos == #sLine then
             tCompletions = _fnComplete( sLine )
             if tCompletions and #tCompletions > 0 then
                 nCompletion = 1
@@ -353,16 +322,20 @@ function read( _sReplaceChar, _tHistory, _fnComplete, _sDefault )
     local sx = term.getCursorPos()
 
     local function redraw( _bClear )
-        local nScroll = 0
-        if sx + nPos >= w then
-            nScroll = (sx + nPos) - w
+        local cursor_pos = nPos - nScroll
+        if sx + cursor_pos >= w then
+            -- We've moved beyond the RHS, ensure we're on the edge.
+            nScroll = sx + nPos - w
+        elseif cursor_pos < 0 then
+            -- We've moved beyond the LHS, ensure we're on the edge.
+            nScroll = nPos
         end
 
-        local cx,cy = term.getCursorPos()
+        local _, cy = term.getCursorPos()
         term.setCursorPos( sx, cy )
-        local sReplace = (_bClear and " ") or _sReplaceChar
+        local sReplace = _bClear and " " or _sReplaceChar
         if sReplace then
-            term.write( string.rep( sReplace, math.max( string.len(sLine) - nScroll, 0 ) ) )
+            term.write( string.rep( sReplace, math.max( #sLine - nScroll, 0 ) ) )
         else
             term.write( string.sub( sLine, nScroll + 1 ) )
         end
@@ -377,7 +350,7 @@ function read( _sReplaceChar, _tHistory, _fnComplete, _sDefault )
                 term.setBackgroundColor( colors.gray )
             end
             if sReplace then
-                term.write( string.rep( sReplace, string.len( sCompletion ) ) )
+                term.write( string.rep( sReplace, #sCompletion ) )
             else
                 term.write( sCompletion )
             end
@@ -405,7 +378,7 @@ function read( _sReplaceChar, _tHistory, _fnComplete, _sDefault )
             -- Find the common prefix of all the other suggestions which start with the same letter as the current one
             local sCompletion = tCompletions[ nCompletion ]
             sLine = sLine .. sCompletion
-            nPos = string.len( sLine )
+            nPos = #sLine
 
             -- Redraw
             recomplete()
@@ -413,7 +386,7 @@ function read( _sReplaceChar, _tHistory, _fnComplete, _sDefault )
         end
     end
     while true do
-        local sEvent, param = os.pullEvent()
+        local sEvent, param, param1, param2 = os.pullEvent()
         if sEvent == "char" then
             -- Typed key
             clear()
@@ -426,7 +399,7 @@ function read( _sReplaceChar, _tHistory, _fnComplete, _sDefault )
             -- Pasted text
             clear()
             sLine = string.sub( sLine, 1, nPos ) .. param .. string.sub( sLine, nPos + 1 )
-            nPos = nPos + string.len( param )
+            nPos = nPos + #param
             recomplete()
             redraw()
 
@@ -451,7 +424,7 @@ function read( _sReplaceChar, _tHistory, _fnComplete, _sDefault )
 
             elseif param == keys.right then
                 -- Right
-                if nPos < string.len(sLine) then
+                if nPos < #sLine then
                     -- Move right
                     clear()
                     nPos = nPos + 1
@@ -502,10 +475,10 @@ function read( _sReplaceChar, _tHistory, _fnComplete, _sDefault )
                     end
                     if nHistoryPos then
                         sLine = _tHistory[nHistoryPos]
-                        nPos = string.len( sLine )
+                        nPos, nScroll = #sLine, 0
                     else
                         sLine = ""
-                        nPos = 0
+                        nPos, nScroll = 0, 0
                     end
                     uncomplete()
                     redraw()
@@ -518,6 +491,7 @@ function read( _sReplaceChar, _tHistory, _fnComplete, _sDefault )
                     clear()
                     sLine = string.sub( sLine, 1, nPos - 1 ) .. string.sub( sLine, nPos + 1 )
                     nPos = nPos - 1
+                    if nScroll > 0 then nScroll = nScroll - 1 end
                     recomplete()
                     redraw()
                 end
@@ -533,7 +507,7 @@ function read( _sReplaceChar, _tHistory, _fnComplete, _sDefault )
 
             elseif param == keys.delete then
                 -- Delete
-                if nPos < string.len(sLine) then
+                if nPos < #sLine then
                     clear()
                     sLine = string.sub( sLine, 1, nPos ) .. string.sub( sLine, nPos + 2 )
                     recomplete()
@@ -542,9 +516,9 @@ function read( _sReplaceChar, _tHistory, _fnComplete, _sDefault )
 
             elseif param == keys["end"] then
                 -- End
-                if nPos < string.len(sLine ) then
+                if nPos < #sLine then
                     clear()
-                    nPos = string.len(sLine)
+                    nPos = #sLine
                     recomplete()
                     redraw()
                 end
@@ -555,6 +529,14 @@ function read( _sReplaceChar, _tHistory, _fnComplete, _sDefault )
 
             end
 
+        elseif sEvent == "mouse_click" or sEvent == "mouse_drag" and param == 1 then
+            local _, cy = term.getCursorPos()
+            if param1 >= sx and param1 <= w and param2 == cy then
+                -- Ensure we don't scroll beyond the current line
+                nPos = math.min(math.max(nScroll + param1 - sx, 0), #sLine)
+                redraw()
+            end
+
         elseif sEvent == "term_resize" then
             -- Terminal resized
             w = term.getSize()
@@ -563,7 +545,7 @@ function read( _sReplaceChar, _tHistory, _fnComplete, _sDefault )
         end
     end
 
-    local cx, cy = term.getCursorPos()
+    local _, cy = term.getCursorPos()
     term.setCursorBlink( false )
     term.setCursorPos( w + 1, cy )
     print()
@@ -571,27 +553,28 @@ function read( _sReplaceChar, _tHistory, _fnComplete, _sDefault )
     return sLine
 end
 
-loadfile = function( _sFile, _tEnv )
-    if type( _sFile ) ~= "string" then
-        error( "bad argument #1 (expected string, got " .. type( _sFile ) .. ")", 2 )
+function loadfile( filename, mode, env )
+    -- Support the previous `loadfile(filename, env)` form instead.
+    if type(mode) == "table" and env == nil then
+        mode, env = nil, mode
     end
-    if _tEnv ~= nil and type( _tEnv ) ~= "table" then
-        error( "bad argument #2 (expected table, got " .. type( _tEnv ) .. ")", 2 )
-    end
-    local file = fs.open( _sFile, "r" )
-    if file then
-        local func, err = load( file.readAll(), "@" .. fs.getName( _sFile ), "t", _tEnv )
-        file.close()
-        return func, err
-    end
-    return nil, "File not found"
+
+    expect(1, filename, "string")
+    expect(2, mode, "string", "nil")
+    expect(3, env, "table", "nil")
+
+    local file = fs.open( filename, "r" )
+    if not file then return nil, "File not found" end
+
+    local func, err = load( file.readAll(), "@" .. fs.getName( filename ), mode, env )
+    file.close()
+    return func, err
 end
 
-dofile = function( _sFile )
-    if type( _sFile ) ~= "string" then
-        error( "bad argument #1 (expected string, got " .. type( _sFile ) .. ")", 2 )
-    end
-    local fnFile, e = loadfile( _sFile, _G )
+function dofile( _sFile )
+    expect(1, _sFile, "string")
+
+    local fnFile, e = loadfile( _sFile, nil, _G )
     if fnFile then
         return fnFile()
     else
@@ -601,16 +584,13 @@ end
 
 -- Install the rest of the OS api
 function os.run( _tEnv, _sPath, ... )
-    if type( _tEnv ) ~= "table" then
-        error( "bad argument #1 (expected table, got " .. type( _tEnv ) .. ")", 2 )
-    end
-    if type( _sPath ) ~= "string" then
-        error( "bad argument #2 (expected string, got " .. type( _sPath ) .. ")", 2 )
-    end
+    expect(1, _tEnv, "table")
+    expect(2, _sPath, "string")
+
     local tArgs = table.pack( ... )
     local tEnv = _tEnv
     setmetatable( tEnv, { __index = _G } )
-    local fnFile, err = loadfile( _sPath, tEnv )
+    local fnFile, err = loadfile( _sPath, nil, tEnv )
     if fnFile then
         local ok, err = pcall( function()
             fnFile( table.unpack( tArgs, 1, tArgs.n ) )
@@ -631,22 +611,20 @@ end
 
 local tAPIsLoading = {}
 function os.loadAPI( _sPath )
-    if type( _sPath ) ~= "string" then
-        error( "bad argument #1 (expected string, got " .. type( _sPath ) .. ")", 2 )
-    end
+    expect(1, _sPath, "string")
     local sName = fs.getName( _sPath )
     if sName:sub(-4) == ".lua" then
-        sName = sName:sub(1,-5)
+        sName = sName:sub(1, -5)
     end
     if tAPIsLoading[sName] == true then
-        printError( "API "..sName.." is already being loaded" )
+        printError( "API " .. sName .. " is already being loaded" )
         return false
     end
     tAPIsLoading[sName] = true
 
     local tEnv = {}
     setmetatable( tEnv, { __index = _G } )
-    local fnAPI, err = loadfile( _sPath, tEnv )
+    local fnAPI, err = loadfile( _sPath, nil, tEnv )
     if fnAPI then
         local ok, err = pcall( fnAPI )
         if not ok then
@@ -659,7 +637,7 @@ function os.loadAPI( _sPath )
     end
 
     local tAPI = {}
-    for k,v in pairs( tEnv ) do
+    for k, v in pairs( tEnv ) do
         if k ~= "_ENV" then
             tAPI[k] =  v
         end
@@ -671,9 +649,7 @@ function os.loadAPI( _sPath )
 end
 
 function os.unloadAPI( _sName )
-    if type( _sName ) ~= "string" then
-        error( "bad argument #1 (expected string, got " .. type( _sName ) .. ")", 2 )
-    end
+    expect(1, _sName, "string")
     if _sName ~= "_G" and type(_G[_sName]) == "table" then
         _G[_sName] = nil
     end
@@ -705,7 +681,8 @@ if http then
 
     local methods = {
         GET = true, POST = true, HEAD = true,
-        OPTIONS = true, PUT = true, DELETE = true
+        OPTIONS = true, PUT = true, DELETE = true,
+        PATCH = true, TRACE = true,
     }
 
     local function checkKey( options, key, ty, opt )
@@ -719,9 +696,11 @@ if http then
 
     local function checkOptions( options, body )
         checkKey( options, "url", "string")
-        if body == false
-        then checkKey( options, "body", "nil" )
-        else checkKey( options, "body", "string", not body ) end
+        if body == false then
+          checkKey( options, "body", "nil" )
+        else
+          checkKey( options, "body", "string", not body )
+        end
         checkKey( options, "headers", "table", true )
         checkKey( options, "method", "string", true )
         checkKey( options, "redirect", "boolean", true )
@@ -752,15 +731,9 @@ if http then
             return wrapRequest( _url.url, _url )
         end
 
-        if type( _url ) ~= "string" then
-            error( "bad argument #1 (expected string, got " .. type( _url ) .. ")", 2 )
-        end
-        if _headers ~= nil and type( _headers ) ~= "table" then
-            error( "bad argument #2 (expected table, got " .. type( _headers ) .. ")", 2 )
-        end
-        if _binary ~= nil and type( _binary ) ~= "boolean" then
-            error( "bad argument #3 (expected boolean, got " .. type( _binary ) .. ")", 2 )
-        end
+        expect(1, _url, "string")
+        expect(2, _headers, "table", "nil")
+        expect(3, _binary, "boolean", "nil")
         return wrapRequest( _url, _url, nil, _headers, _binary )
     end
 
@@ -770,18 +743,10 @@ if http then
             return wrapRequest( _url.url, _url )
         end
 
-        if type( _url ) ~= "string" then
-            error( "bad argument #1 (expected string, got " .. type( _url ) .. ")", 2 )
-        end
-        if type( _post ) ~= "string" then
-            error( "bad argument #2 (expected string, got " .. type( _post ) .. ")", 2 )
-        end
-        if _headers ~= nil and type( _headers ) ~= "table" then
-            error( "bad argument #3 (expected table, got " .. type( _headers ) .. ")", 2 )
-        end
-        if _binary ~= nil and type( _binary ) ~= "boolean" then
-            error( "bad argument #4 (expected boolean, got " .. type( _binary ) .. ")", 2 )
-        end
+        expect(1, _url, "string")
+        expect(2, _post, "string")
+        expect(3, _headers, "table", "nil")
+        expect(4, _binary, "boolean", "nil")
         return wrapRequest( _url, _url, _post, _headers, _binary )
     end
 
@@ -791,19 +756,10 @@ if http then
             checkOptions( _url )
             url = _url.url
         else
-            if type( _url ) ~= "string" then
-                error( "bad argument #1 (expected string, got " .. type( _url ) .. ")", 2 )
-            end
-            if _post ~= nil and type( _post ) ~= "string" then
-                error( "bad argument #2 (expected string, got " .. type( _post ) .. ")", 2 )
-            end
-            if _headers ~= nil and type( _headers ) ~= "table" then
-                error( "bad argument #3 (expected table, got " .. type( _headers ) .. ")", 2 )
-            end
-            if _binary ~= nil and type( _binary ) ~= "boolean" then
-                error( "bad argument #4 (expected boolean, got " .. type( _binary ) .. ")", 2 )
-            end
-
+            expect(1, _url, "string")
+            expect(2, _post, "string", "nil")
+            expect(3, _headers, "table", "nil")
+            expect(4, _binary, "boolean", "nil")
             url = _url.url
         end
 
@@ -821,7 +777,7 @@ if http then
         if not ok then return ok, err end
 
         while true do
-            local event, url, ok, err = os.pullEvent( "http_check" )
+            local _, url, ok, err = os.pullEvent( "http_check" )
             if url == _url then return ok, err end
         end
     end
@@ -829,12 +785,9 @@ if http then
     local nativeWebsocket = http.websocket
     http.websocketAsync = nativeWebsocket
     http.websocket = function( _url, _headers )
-        if type( _url ) ~= "string" then
-            error( "bad argument #1 (expected string, got " .. type( _url ) .. ")", 2 )
-        end
-        if _headers ~= nil and type( _headers ) ~= "table" then
-            error( "bad argument #2 (expected table, got " .. type( _headers ) .. ")", 2 )
-        end
+        expect(1, _url, "string")
+        expect(2, _headers, "table", "nil")
+
         local ok, err = nativeWebsocket( _url, _headers )
         if not ok then return ok, err end
 
@@ -852,20 +805,13 @@ end
 -- Install the lua part of the FS api
 local tEmpty = {}
 function fs.complete( sPath, sLocation, bIncludeFiles, bIncludeDirs )
-    if type( sPath ) ~= "string" then
-        error( "bad argument #1 (expected string, got " .. type( sPath ) .. ")", 2 )
-    end
-    if type( sLocation ) ~= "string" then
-        error( "bad argument #2 (expected string, got " .. type( sLocation ) .. ")", 2 )
-    end
-    if bIncludeFiles ~= nil and type( bIncludeFiles ) ~= "boolean" then
-        error( "bad argument #3 (expected boolean, got " .. type( bIncludeFiles ) .. ")", 2 )
-    end
-    if bIncludeDirs ~= nil and type( bIncludeDirs ) ~= "boolean" then
-        error( "bad argument #4 (expected boolean, got " .. type( bIncludeDirs ) .. ")", 2 )
-    end
-    bIncludeFiles = (bIncludeFiles ~= false)
-    bIncludeDirs = (bIncludeDirs ~= false)
+    expect(1, sPath, "string")
+    expect(2, sLocation, "string")
+    expect(3, bIncludeFiles, "boolean", "nil")
+    expect(4, bIncludeDirs, "boolean", "nil")
+
+    bIncludeFiles = bIncludeFiles ~= false
+    bIncludeDirs = bIncludeDirs ~= false
     local sDir = sLocation
     local nStart = 1
     local nSlash = string.find( sPath, "[/\\]", nStart )
@@ -892,13 +838,13 @@ function fs.complete( sPath, sLocation, bIncludeFiles, bIncludeDirs )
         end
         if sDir ~= "" then
             if sPath == "" then
-                table.insert( tResults, (bIncludeDirs and "..") or "../" )
+                table.insert( tResults, bIncludeDirs and ".." or "../" )
             elseif sPath == "." then
-                table.insert( tResults, (bIncludeDirs and ".") or "./" )
+                table.insert( tResults, bIncludeDirs and "." or "./" )
             end
         end
         local tFiles = fs.list( sDir )
-        for n=1,#tFiles do
+        for n = 1, #tFiles do
             local sFile = tFiles[n]
             if #sFile >= #sName and string.sub( sFile, 1, #sName ) == sName then
                 local bIsDir = fs.isDir( fs.combine( sDir, sFile ) )
@@ -923,7 +869,7 @@ end
 -- Load APIs
 local bAPIError = false
 local tApis = fs.list( "rom/apis" )
-for n,sFile in ipairs( tApis ) do
+for _, sFile in ipairs( tApis ) do
     if string.sub( sFile, 1, 1 ) ~= "." then
         local sPath = fs.combine( "rom/apis", sFile )
         if not fs.isDir( sPath ) then
@@ -937,7 +883,7 @@ end
 if turtle and fs.isDir( "rom/apis/turtle" ) then
     -- Load turtle APIs
     local tApis = fs.list( "rom/apis/turtle" )
-    for n,sFile in ipairs( tApis ) do
+    for _, sFile in ipairs( tApis ) do
         if string.sub( sFile, 1, 1 ) ~= "." then
             local sPath = fs.combine( "rom/apis/turtle", sFile )
             if not fs.isDir( sPath ) then
@@ -952,7 +898,7 @@ end
 if pocket and fs.isDir( "rom/apis/pocket" ) then
     -- Load pocket APIs
     local tApis = fs.list( "rom/apis/pocket" )
-    for n,sFile in ipairs( tApis ) do
+    for _, sFile in ipairs( tApis ) do
         if string.sub( sFile, 1, 1 ) ~= "." then
             local sPath = fs.combine( "rom/apis/pocket", sFile )
             if not fs.isDir( sPath ) then
@@ -981,7 +927,7 @@ if commands and fs.isDir( "rom/apis/command" ) then
                     end
                 end
                 return nil
-            end
+            end,
         }
         setmetatable( commands, tCaseInsensitiveMetatable )
         setmetatable( commands.async, tCaseInsensitiveMetatable )
@@ -997,12 +943,12 @@ if bAPIError then
     print( "Press any key to continue" )
     os.pullEvent( "key" )
     term.clear()
-    term.setCursorPos( 1,1 )
+    term.setCursorPos( 1, 1 )
 end
 
 -- Set default settings
 settings.set( "shell.allow_startup", true )
-settings.set( "shell.allow_disk_startup", (commands == nil) )
+settings.set( "shell.allow_disk_startup", commands == nil )
 settings.set( "shell.autocomplete", true )
 settings.set( "edit.autocomplete", true )
 settings.set( "edit.default_extension", "lua" )
@@ -1070,8 +1016,7 @@ local ok, err = pcall( function()
 
             -- keep the coroutine running so waitForAny doesn't end
             while true do coroutine.yield() end
-        end
-    )
+        end )
 end )
 
 -- If the shell errored, let the user read it.
