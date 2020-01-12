@@ -1,6 +1,6 @@
--------------------------------------------------------------------------------------
--- Wojbies API 4.0 - Bigfont - functions to write bigger font using drawing sybols --
--------------------------------------------------------------------------------------
+-----------------------------------------------------------------------------------------------------------------------------------------------
+-- Wojbies API 4.0 - BigfontSC - functions to write bigger font using drawing sybols -- Swichcraft Edition - replaced \164 with krist symbol --
+-----------------------------------------------------------------------------------------------------------------------------------------------
 --LICENCE: ZLIB/libpng Licence (Zlib)
 --   Copyright (c) 2015-2020 Wojbie (wojbie@wojbie.net)
 --   This software is provided 'as-is', without any express or implied warranty. In no event will the authors be held liable for any damages arising from the use of this software.
@@ -11,7 +11,7 @@
 
 --### Initializing
 local b = shell and {} or (_ENV or getfenv())
-b.versionName = "Bigfont By Wojbie"
+b.versionName = "BigfontSC By Wojbie"
 b.versionNum = 4.0 --2019-12-30
 
 --### Font database
