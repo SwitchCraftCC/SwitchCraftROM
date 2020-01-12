@@ -132,8 +132,8 @@ end
 package.preload["framebuffer"] = function(...)
   local stringify = require("json").stringify
   local colour_lookup = {}
-  for i = 0, 16 do
-    colour_lookup[string.format("%x", i)] = 2 ^ i
+  for i = 0, 15 do
+    colour_lookup[2 ^ i] = string.format("%x", i)
   end
   local void = function() end
   local function empty(colour, width, height)
@@ -168,7 +168,7 @@ package.preload["framebuffer"] = function(...)
       for i = 0, 15 do
         local c = 2 ^ i
         palette[c] = { original.getPaletteColour( c ) }
-        palette_24[c] = colours.rgb8(original.getPaletteColour( c ))
+        palette_24[colour_lookup[c]] = colours.rgb8(original.getPaletteColour( c ))
       end
     end
     function redirect.write(writeText)
@@ -251,21 +251,28 @@ package.preload["framebuffer"] = function(...)
       return cursor_x, cursor_y
     end
     function redirect.setCursorPos(x, y)
-      cursor_x = math.floor(tonumber(x)) or cursor_x
-      cursor_y = math.floor(tonumber(y)) or cursor_y
-      if x ~= cursor_x or y ~= cursor_y then dirty = true end
+      if type(x) ~= "number" then error("bad argument #1 (expected number, got " .. type(x) .. ")", 2) end
+      if type(y) ~= "number" then error("bad argument #2 (expected number, got " .. type(y) .. ")", 2) end
+      if x ~= cursor_x or y ~= cursor_y then
+        cursor_x = math.floor(x)
+        cursor_y = math.floor(y)
+        dirty = true
+      end
       return original.setCursorPos(x, y)
     end
     function redirect.setCursorBlink(b)
-      cursor_blink = b
-      if cursor_blink ~= b then dirty = true end
+      if type(b) ~= "boolean" then error("bad argument #1 (expected boolean, got " .. type(b) .. ")", 2) end
+      if cursor_blink ~= b then
+        cursor_blink = b
+        dirty = true
+      end
       return original.setCursorBlink(b)
     end
     function redirect.getSize()
       return sizeX, sizeY
     end
     function redirect.scroll(n)
-      n = tonumber(n) or 1
+      if type(n) ~= "number" then error("bad argument #1 (expected number, got " .. type(n) .. ")", 2) end
       local empty_text = string.rep(" ", sizeX)
       local empty_text_colour = string.rep(cur_text_colour, sizeX)
       local empty_back_colour = string.rep(cur_back_colour, sizeX)
@@ -286,14 +293,22 @@ package.preload["framebuffer"] = function(...)
       return original.scroll(n)
     end
     function redirect.setTextColour(clr)
-      cur_text_colour = colour_lookup[clr] or string.format("%x", math.floor(math.log(clr) / math.log(2)))
-      dirty = true
+      if type(clr) ~= "number" then error("bad argument #1 (expected number, got " .. type(clr) .. ")", 2) end
+      local new_colour = colour_lookup[clr] or error("Invalid colour (got " .. clr .. ")" , 2)
+      if new_colour ~= cur_text_colour then
+        dirty = true
+        cur_text_colour = new_colour
+      end
       return original.setTextColour(clr)
     end
     redirect.setTextColor = redirect.setTextColour
     function redirect.setBackgroundColour(clr)
-      cur_back_colour = colour_lookup[clr] or string.format("%x", math.floor(math.log(clr) / math.log(2)))
-      dirty = true
+      if type(clr) ~= "number" then error("bad argument #1 (expected number, got " .. type(clr) .. ")", 2) end
+      local new_colour = colour_lookup[clr] or error("Invalid colour (got " .. clr .. ")" , 2)
+      if new_colour ~= cur_back_colour then
+        dirty = true
+        cur_back_colour = new_colour
+      end
       return original.setBackgroundColour(clr)
     end
     redirect.setBackgroundColor = redirect.setBackgroundColour
@@ -321,7 +336,7 @@ package.preload["framebuffer"] = function(...)
             if type(g) ~= "number" then error("bad argument #3 (expected number, got " .. type(g) .. ")", 2) end
             if type(b) ~= "number" then error("bad argument #4 (expected number, got " .. type(b ) .. ")", 2 ) end
             palcol[1], palcol[2], palcol[3] = r, g, b
-            palette_24[colour] = colours.rgb8(r, g, b)
+            palette_24[colour_lookup[colour]] = colours.rgb8(r, g, b)
         end
         dirty = true
         return original.setPaletteColour(colour, r, g, b)
@@ -379,16 +394,32 @@ package.preload["json"] = function(...)
     end
     return pos + 1, true
   end
-  local function parse_str_val(str, pos, val)
-    val = val or ''
+  local esc_map = { b = '\b', f = '\f', n = '\n', r = '\r', t = '\t' }
+  local function parse_str_val(str, pos)
+    local out, n = {}, 0
     if pos > #str then error("Malformed JSON (in string)") end
-    local c = str:sub(pos, pos)
-    if c == '"'  then return val, pos + 1 end
-    if c ~= '\\' then return parse_str_val(str, pos + 1, val .. c) end
-    local esc_map = {b = '\b', f = '\f', n = '\n', r = '\r', t = '\t'}
-    local nextc = str:sub(pos + 1, pos + 1)
-    if not nextc then error("Malformed JSON (in string)") end
-    return parse_str_val(str, pos + 2, val .. (esc_map[nextc] or nextc))
+    while true do
+      local c = str:sub(pos, pos)
+      if c == '"' then return table.concat(out, "", 1, n), pos + 1 end
+      n = n + 1
+      if c == '\\' then
+        local nextc = str:sub(pos + 1, pos + 1)
+        if not nextc then error("Malformed JSON (in string)") end
+        if nextc == "u" then
+          local num = tonumber(str:sub(pos + 2, pos + 5), 16)
+          if not num then error("Malformed JSON (in unicode string) ") end
+          if num <= 255 then
+            pos, out[n] = pos + 6, string.char(num)
+          else
+            pos, out[n] = pos + 6, "?"
+          end
+        else
+          pos, out[n] = pos + 2, esc_map[nextc] or nextc
+        end
+      else
+        pos, out[n] = pos + 1, c
+      end
+    end
   end
   local function parse_num_val(str, pos)
     local num_str = str:match('^-?%d+%.?%d*[eE]?[+-]?%d*', pos)
@@ -398,6 +429,15 @@ package.preload["json"] = function(...)
   end
   local null = {}
   local literals = {['true'] = true, ['false'] = false, ['null'] = null }
+  local escapes = {}
+  for i = 0, 255 do
+    local c = string.char(i)
+    if i >= 32 and i <= 126
+    then escapes[c] = c
+    else escapes[c] = ("\\u00%02x"):format(i)
+    end
+  end
+  escapes["\t"], escapes["\n"], escapes["\r"], escapes["\""], escapes["\\"] = "\\t", "\\n", "\\r", "\\\"", "\\\\"
   local function parse(str, pos, end_delim)
     pos = pos or 1
     if pos > #str then error('Reached unexpected end of input.') end
@@ -470,7 +510,11 @@ package.preload["json"] = function(...)
         error("Cannot serialize key " .. first_ty)
       end
     elseif ty == "string" then
-      out[n],n  = gsub(format("%q", t), "\n", "n"), n + 1
+      if t:match("^[ -~]*$") then
+        out[n], n = gsub(format("%q", t), "\n", "n"), n + 1
+      else
+        out[n], n = "\"" .. gsub(t, ".", escapes) .. "\"", n + 1
+      end
       return n
     elseif ty == "number" or ty == "boolean" then
       out[n],n  = tostring(t), n + 1
@@ -593,21 +637,23 @@ do
       if not server_file_edit then
         return false, "There are no editors connected"
       end
-      local contents
+      local contents, exists
       local handle = fs.open(file, "rb")
       if handle then
         contents = handle.readAll()
         handle.close()
+        exists = true
       else
         contents = ""
+        exists = false
       end
-      local encoded = contents
-      if #file + #encoded + 5 > max_packet_size then
+      if #file + #contents + 5 > max_packet_size then
         return false, "This file is too large to be edited remotely"
       end
       local check = encode.fletcher_32(contents)
       local flag = 0x04
       if fs.isReadOnly(file) then flag = flag + 0x01 end
+      if not exists then flag = flag + 0x08 end
       remote.send(json.stringify {
         packet = 0x22,
         id = 0,
@@ -648,23 +694,37 @@ if parent_term ~= nil then
   co = coroutine.create(shell.run)
   term.redirect(buffer)
 end
+local info_dirty, last_label, get_label = true, nil, os.getComputerLabel
+local function send_info()
+  last_label = get_label()
+  info_dirty = false
+  remote.send(json.stringify {
+    packet = 0x12,
+    id = os.getComputerID(),
+    label = last_label,
+  })
+end
 local ok, res = true
 if co then ok, res = coroutine.resume(co, "shell") end
 local last_change, last_timer = os.clock(), nil
 local pending_events, pending_n = {}, 0
 while ok and (not co or coroutine.status(co) ~= "dead") do
-  if server_term and last_timer == nil and buffer.is_dirty() then
+  if not info_dirty and last_label ~= get_label() then info_dirty = true end
+  if server_term and last_timer == nil and (buffer.is_dirty() or info_dirty) then
     local now = os.clock()
     if now - last_change < 0.04 then
       last_timer = os.startTimer(0)
     else
-      remote.send(buffer.serialise())
-      buffer.clear_dirty()
       last_change = os.clock()
+      if buffer.is_dirty() then
+        remote.send(buffer.serialise())
+        buffer.clear_dirty()
+      end
+      if info_dirty then send_info() end
     end
   end
   local event
-  if pending_n > 1 then
+  if pending_n >= 1 then
     event = table.remove(pending_events, 1)
     pending_n = pending_n - 1
   else
@@ -673,9 +733,9 @@ while ok and (not co or coroutine.status(co) ~= "dead") do
   if event[1] == "timer" and event[2] == last_timer then
     last_timer = nil
     if server_term then
-      if buffer.is_dirty() then remote.send(buffer.serialise()) end
-      buffer.clear_dirty()
       last_change = os.clock()
+      if buffer.is_dirty() then remote.send(buffer.serialise()) buffer.clear_dirty() end
+      if info_dirty then send_info() end
     end
   elseif event[1] == "websocket_closed" and event[2] == url then
     ok, res = false, "Connection lost"
@@ -690,8 +750,8 @@ while ok and (not co or coroutine.status(co) ~= "dead") do
         for _, cap in ipairs(packet.capabilities) do
           if cap == "terminal:view" and buffer ~= nil then
             server_term = true
-            remote.send(buffer.serialise())
-            buffer.clear_dirty()
+            remote.send(buffer.serialise()) buffer.clear_dirty()
+            send_info()
             last_change = os.clock()
           elseif cap == "file:host" then
             server_file_host = true
