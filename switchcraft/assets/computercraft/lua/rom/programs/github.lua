@@ -1,30 +1,30 @@
 local args = {...}
 
 local function printUsage()
-        printError("Usage: github limits [key|guest]")
-        error()
+  printError("Usage: github limits [key|guest]")
+  error()
 end
 
 if args[1] ~= "limits" then
-    printUsage()
+  printUsage()
 end
 
 local limits = switchcraft.githubLimits(args[2])
 if not limits then error("Unable to get rate limits from GitHub API") end
 
 local function writeLine(caption, value)
-    local oldColour = term.getTextColour()
+  local oldColour = term.getTextColour()
 
-    term.setTextColour(colours.lightGrey)
-    write(caption .. ": ")
+  term.setTextColour(colours.lightGrey)
+  write(caption .. ": ")
 
-    local valueColour = type(value) == "number"
-        and (value <= 5 and colours.red or colours.white)
-        or colours.white
-    term.setTextColour(valueColour)
-    print(value)
+  local valueColour = type(value) == "number"
+    and (value <= 5 and colours.red or colours.white)
+    or colours.white
+  term.setTextColour(valueColour)
+  print(value)
 
-    term.setTextColour(oldColour)
+  term.setTextColour(oldColour)
 end
 
 print("GitHub API Rate Limits:")
