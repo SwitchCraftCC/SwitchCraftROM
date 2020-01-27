@@ -21,9 +21,7 @@ elseif not colours[textColourName] then
   error(string.format("Street Sign:\nText colour `%s` is invalid.", textColourName), 0)
 end
 
-local function draw(name)
-	local mon = peripheral.wrap(name)
-
+local function draw(name, mon)
 	mon.setTextScale(1)
 	local w, h = mon.getSize()
 
