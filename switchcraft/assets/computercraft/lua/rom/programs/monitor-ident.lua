@@ -1,3 +1,6 @@
+-- SwitchCraft monitor-ident
+-- Lemmmy 2020
+
 local MONITOR_ADV_COLOURS_BG = { 
   -- colours.black, colours.grey, colours.lightGrey, colours.white, 
   colours.red, colours.orange, colours.yellow, colours.lime, 
