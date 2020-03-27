@@ -538,7 +538,7 @@ package.preload["json"] = function(...)
     null = null
   }
 end
-local tonumber = tonumber
+local tonumber, type, keys = tonumber, type, keys
 local argparse = require "argparse"
 local framebuffer = require "framebuffer"
 local encode = require "encode"
@@ -766,7 +766,15 @@ while ok and (not co or coroutine.status(co) ~= "dead") do
       if code == 0x11 then -- TerminalEvents
         for _, event in ipairs(packet.events) do
           pending_n = pending_n + 1
-          pending_events[pending_n] = table.pack(event.name, table.unpack(event.args))
+          if event.name == "cloud_catcher_key" then
+            local key = keys[event.args[1]]
+            if type(key) == "number" then pending_events[pending_n] = { n = 3, "key", key, event.args[2] } end
+          elseif event.name == "cloud_catcher_key_up" then
+              local key = keys[event.args[1]]
+              if type(key) == "number" then pending_events[pending_n] = { n = 2, "key_up", key } end
+          else
+            pending_events[pending_n] = table.pack(event.name, table.unpack(event.args))
+          end
         end
       end
     elseif code >= 0x20 and code < 0x30 then

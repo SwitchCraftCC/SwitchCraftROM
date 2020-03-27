@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+set -x
 
 if [ ! -d "CC-Tweaked" ]; then
   git clone https://github.com/SquidDev-CC/CC-Tweaked.git

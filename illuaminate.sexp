@@ -1,20 +1,14 @@
 ; -*- mode: Lisp;-*-
 
-(sources
-  /switchcraft)
+(sources /switchcraft)
 
 (at /
   (linters
-    -format:separator-space
-    -syntax:table-trailing ;; Why is this syntax rather than format?
-
-    ;; It'd be nice to avoid this, but right now there's a lot of instances of
-    ;; it.
+    -format:separator-space -format:table-trailing
     -var:set-loop
-
-    ;; It's useful to name arguments for documentation, so we allow this. It'd
-    ;; be good to find a compromise in the future, but this works for now.
-    -var:unused-arg))
+    -var:unused-arg
+    -doc:detached-comment -doc:undocumented -doc:undocumented-arg
+    -doc:unresolved-reference))
 
 (at
   (/switchcraft/assets/computercraft/lua/bios.lua
