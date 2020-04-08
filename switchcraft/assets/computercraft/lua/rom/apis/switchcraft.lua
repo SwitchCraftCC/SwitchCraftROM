@@ -1,5 +1,3 @@
-_G._GIT_API_KEY = "b5ed2451b9dfbbf53508648e1d58e24b82f6c01c"
-
 local GITHUB_API_URL = "https://api.github.com"
 
 function tps()
