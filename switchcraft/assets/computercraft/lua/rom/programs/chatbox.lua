@@ -1,6 +1,6 @@
 local args = {...}
 
-local events = {"join", "leave", "death", "chat", "chat_me", "chat_discord", "chat_chatbox", "command"}
+local events = {"join", "leave", "death", "chat", "chat_me", "chat_discord", "chat_chatbox", "command", "afk", "afk_return"}
 
 local function printUsage()
   printError(
