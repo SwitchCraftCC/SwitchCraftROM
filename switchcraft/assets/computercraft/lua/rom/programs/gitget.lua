@@ -1,7 +1,7 @@
 --[[ /gitget
 GitHub downloading utility for CC.
 Developed by apemanzilla.
- 
+
 This requires ElvishJerricco's JSON parsing API.
 Direct link: http://pastebin.com/raw.php?i=4nRg9CHU
 ]]--
@@ -20,18 +20,20 @@ local preset = {
 	user = nil,
 	-- The GitHub repository name
 	repo = nil,
-	
+
+	token = _G._GIT_API_KEY,
+
 	-- The branch or commit tree to download (defaults to 'master')
 	branch = nil,
-	
+
 	-- The local folder to save all the files to (defaults to '/')
 	path = nil,
-	
+
 	-- Function to run before starting the download
 	start = function()
 		if not silent then print("Downloading files from GitHub...") end
 	end,
-	
+
 	-- Function to run when the download completes
 	done = function()
 		if not silent then print("Done") end
@@ -45,11 +47,11 @@ args[1] = preset.user or args[1]
 args[2] = preset.repo or args[2]
 args[3] = preset.branch or args[3] or "master"
 args[4] = preset.path or args[4] or ""
- 
+
 if #args < 2 then
 		print("Usage:\n"..((shell and shell.getRunningProgram()) or "gitget").." <user> <repo> [branch/tree] [path]") error()
 end
- 
+
 local function save(data,file)
 	local file = shell.resolve(file:gsub("%%20"," "))
 	if not (fs.exists(string.sub(file,1,#file - #fs.getName(file))) and fs.isDir(string.sub(file,1,#file - #fs.getName(file)))) then
@@ -60,7 +62,7 @@ local function save(data,file)
 	f.write(data)
 	f.close()
 end
- 
+
 local function download(url, file)
 	save(http.get(url).readAll(),file)
 end
@@ -69,9 +71,12 @@ if not json then
 	download("http://pastebin.com/raw.php?i=4nRg9CHU","json")
 	os.loadAPI("json")
 end
- 
+
 preset.start()
-local data = json.decode(http.get("https://api.github.com/repos/"..args[1].."/"..args[2].."/git/trees/"..args[3].."?recursive=1&access_token=b5ed2451b9dfbbf53508648e1d58e24b82f6c01c").readAll())
+local url = ("https://api.github.com/repos/%s/%s/git/trees/%s?recursive=1%s"):format(args[1], args[2], args[3], preset.token and ("&access_token="..preset.token) or "")
+local web = http.get(url)
+if not web then error("Could not connect to Github") end
+local data = json.decode(web.readAll())
 if data.message and data.message:find("API rate limit exceeded") then error("Out of API calls, try again later") end
 if data.message and data.message == "Not found" then error("Invalid repository",2) else
 	for k,v in pairs(data.tree) do
