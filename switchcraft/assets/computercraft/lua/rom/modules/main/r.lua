@@ -18,11 +18,16 @@ end
 
 local function findID(url)
   local found = gfind(url, idPatt)
+  if not found then return nil end
   return tonumber(found[#found]:sub(found[#found]:find("%d+")))
 end
 
 local function newID()
-  return #callbackRegistry + 1
+  for i = 1, math.huge do
+    if not callbackRegistry[i] then
+      return i
+    end
+  end
 end
 
 local function trimID(url)
@@ -34,25 +39,25 @@ end
 function request(callback, url, headers, postData)
   local id = newID()
   local newUrl = url .. "#R" .. id
-  http.request(newUrl, postData, headers)
   callbackRegistry[id] = callback
+  http.request(newUrl, postData, headers)
 end
 
 function init(jua)
   jua = jua
   jua.on("http_success", function(event, url, handle)
     local id = findID(url)
-    if callbackRegistry[id] then
+    if id and callbackRegistry[id] then
       callbackRegistry[id](true, trimID(url), handle)
-      table.remove(callbackRegistry, id)
+      callbackRegistry[id] = nil
     end
   end)
 
   jua.on("http_failure", function(event, url, handle)
     local id = findID(url)
-    if callbackRegistry[id] then
+    if id and callbackRegistry[id] then
       callbackRegistry[id](false, trimID(url), handle)
-      table.remove(callbackRegistry, id)
+      callbackRegistry[id] = nil
     end
   end)
 end
