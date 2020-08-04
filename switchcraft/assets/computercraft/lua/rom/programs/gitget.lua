@@ -72,8 +72,10 @@ if not json then
 	os.loadAPI("json")
 end
 
+local cacheBuster = tostring(os.epoch("utc"))
+
 preset.start()
-local url = ("https://api.github.com/repos/%s/%s/git/trees/%s?recursive=1%s"):format(args[1], args[2], args[3], preset.token and ("&access_token="..preset.token) or "")
+local url = ("https://api.github.com/repos/%s/%s/git/trees/%s?recursive=1&cb=%s%s"):format(args[1], args[2], args[3], cacheBuster, preset.token and ("&access_token="..preset.token) or "")
 local web = http.get(url)
 if not web then error("Could not connect to Github") end
 local data = json.decode(web.readAll())
@@ -112,7 +114,7 @@ if data.message and data.message == "Not found" then error("Invalid repository",
 		-- Send all HTTP requests (async)
 		if v.type == "blob" then
 			v.path = v.path:gsub("%s","%%20")
-			local url = "https://raw.github.com/"..args[1].."/"..args[2].."/"..args[3].."/"..v.path,fs.combine(args[4],v.path)
+			local url = "https://raw.github.com/"..args[1].."/"..args[2].."/"..args[3].."/"..v.path.."?cb="..cacheBuster,fs.combine(args[4],v.path)
 			if async then
 				http.request(url)
 				paths[url] = fs.combine(args[4],v.path)
