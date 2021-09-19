@@ -73,10 +73,14 @@ if not json then
 end
 
 local cacheBuster = tostring(os.epoch("utc"))
+local headers = {}
 
 preset.start()
-local url = ("https://api.github.com/repos/%s/%s/git/trees/%s?recursive=1&cb=%s%s"):format(args[1], args[2], args[3], cacheBuster, preset.token and ("&access_token="..preset.token) or "")
-local web = http.get(url)
+local url = ("https://api.github.com/repos/%s/%s/git/trees/%s?recursive=1&cb=%s"):format(args[1], args[2], args[3], cacheBuster)
+if preset.token then
+	headers.Authorization =  'token ' .. preset.token
+end
+local web = http.get(url, headers)
 if not web then error("Could not connect to Github") end
 local data = json.decode(web.readAll())
 if data.message and data.message:find("API rate limit exceeded") then error("Out of API calls, try again later") end
