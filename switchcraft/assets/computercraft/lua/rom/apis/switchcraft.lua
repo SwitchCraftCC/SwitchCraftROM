@@ -18,13 +18,14 @@ end
 
 function githubLimits(key)
   key = key or _G._GIT_API_KEY or "guest"
+  local headers = {}
 
   local url = GITHUB_API_URL .. "/rate_limit"
   if key ~= "guest" then
-    url = url .. "?access_token=" .. textutils.urlEncode(_G._GIT_API_KEY)
+    headers.Authorization =  'token ' .. key
   end
 
-  local h, err = http.get(url)
+  local h, err = http.get(url, headers)
   if not h or err then
     error("Error contacting GitHub API: " .. err)
   end
