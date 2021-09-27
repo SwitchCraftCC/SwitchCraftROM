@@ -102,6 +102,7 @@ if sCommand == "put" then
             title = sName,
             syntax = "lua",
             content = sText,
+            asGuest = true,
         }),
         {
             ["Authorization"] = key,
