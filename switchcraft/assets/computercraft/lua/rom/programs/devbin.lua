@@ -75,9 +75,19 @@ local function get(url)
     end
 end
 
+local key = settings.get("devbin.token", "computercraft")
+local uploadAsGuest = settings.get("devbin.upload_as_guest", true)
+
+if not settings.get("devbin.token") then
+    settings.set("devbin.token", key)
+end
+if settings.get("devbin.upload_as_guest") == nil then
+    settings.set("devbin.upload_as_guest", true)
+end
+
 local sCommand = tArgs[1]
 if sCommand == "put" then
-    -- Upload a file to pastebin.com
+    -- Upload a file to devbin.dev
     -- Determine file to upload
     local sFile = tArgs[2]
     local sPath = shell.resolve(sFile)
@@ -92,9 +102,8 @@ if sCommand == "put" then
     local sText = file.readAll()
     file.close()
 
-    -- POST the contents to pastebin
+    -- POST the contents to devbin
     write("Connecting to devbin.dev... ")
-    local key = "computercraft"
     local response, err =
         http.post(
         "https://devbin.dev/api/v2/paste",
@@ -102,7 +111,7 @@ if sCommand == "put" then
             title = sName,
             syntax = "lua",
             content = sText,
-            asGuest = true,
+            asGuest = uploadAsGuest,
         }),
         {
             ["Authorization"] = key,
@@ -124,7 +133,7 @@ if sCommand == "put" then
         print("Failed.", err)
     end
 elseif sCommand == "get" then
-    -- Download a file from pastebin.com
+    -- Download a file from devbin.dev
     if #tArgs < 3 then
         printUsage()
         return
@@ -139,7 +148,7 @@ elseif sCommand == "get" then
         return
     end
 
-    -- GET the contents from pastebin
+    -- GET the contents from devbin
     local res = get(sCode)
     if res then
         local file = fs.open(sPath, "w")
